@@ -1,0 +1,155 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+	"Parameters": {      
+        "SG": {
+            "Description": "SecurityGroup_Kiran1",
+            "Type": "AWS::EC2::SecurityGroup::Id",
+            "Default": "sg-09f5ae1ab8bb1359c"
+        },      
+        "Subnet1": {
+            "Description": "VPC Subnet-1 Id",
+            "Type": "AWS::EC2::Subnet::Id",
+            "Default": "subnet-05d61cd680cbf864d"
+        }		
+    },
+	
+    "Resources": {		
+       		
+        "EC2M3P02": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+            	"InstanceType" : "t2.micro",
+            	"ImageId" : "ami-048f6ed62451373d9",
+                "KeyName" : "cloudkey",
+				"IamInstanceProfile" : {"Ref" : "InstanceProfile"},
+                "NetworkInterfaces": [
+                    {
+                        "SubnetId": {
+                            "Ref": "Subnet1"
+                        },
+                        "GroupSet": [{ "Ref" : "SG" }],
+                        "DeviceIndex": "0",
+                        "DeleteOnTermination": "true"
+                    }
+                ],
+                "Tags" : [ {"Key" : "Name", "Value" : "EC2Instance_M3P02"} ],
+				"UserData" : { "Fn::Base64" : { "Fn::Join" : ["",[
+					"#!/bin/bash -ex", "\n",					
+					"sudo yum update -y", "\n",
+					"wget https://aws-codedeploy-us-east-1.s3.us-east-1.amazonaws.com/latest/install","\n",
+					"sudo yum install ruby -y","\n",
+					"chmod +x ./install ; sudo ./install auto", "\n",
+					"yum install python3-pip", "\n",						
+					"sudo service codedeploy-agent status", "\n",
+					"pip3 install boto3", "\n"]]}
+				}
+            }
+        },
+		
+		"InstanceProfile" : {
+			"Type" : "AWS::IAM::InstanceProfile",
+			"Properties" : {
+			  "Path" : "/",
+			  "Roles" : ["M3P02"]
+			}
+		},	
+		
+		"S3Bucket": {
+            "Type": "AWS::S3::Bucket",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "BucketName": "s3m3p2f5"
+            }
+        },
+		
+		"AWSLambda": {			
+			"Type": "AWS::Lambda::Function",
+			"Properties": {
+				"Runtime": "python3.8",
+				"FunctionName" : "lambda_m3p2",
+				"Timeout": 60, 
+				"Handler":"anomaly_detection.lambda_handler",
+				"Role": "arn:aws:iam::174850484977:role/M3P021",
+				"Code": {
+					"S3Bucket": "s3m3p2",
+					"S3Key": "anomaly_detection.zip"
+				}
+			}	
+		},
+		
+		"EventSourceMapping": {
+			"Type": "AWS::Lambda::EventSourceMapping",
+			"Properties": {				
+				"EventSourceArn":
+					{
+						"Fn::GetAtt": [
+							"KinesisStreamM3P02",
+							"Arn"
+						]
+					},
+				"FunctionName" : {
+                    "Ref": "AWSLambda"
+                },
+				"StartingPosition": "LATEST"
+			}
+		},
+		
+		"TestDynamoDBM3P02" : {
+  			"Type" : "AWS::DynamoDB::Table",
+  			"Properties" : {
+      			"AttributeDefinitions" : [
+      			 	{
+  						"AttributeName" : "deviceid",
+  						"AttributeType" : "S"
+					}, 
+					{
+  						"AttributeName" : "timestamp",
+  						"AttributeType" : "S"
+					}				
+      			 ],
+      			"KeySchema" : [
+      				{
+                        "AttributeName": "deviceid",
+                        "KeyType": "HASH"
+                    },
+                    {
+                        "AttributeName": "timestamp",
+                        "KeyType": "RANGE"
+                    }
+				
+                ],
+      			"TableName" : "m03p02_anomaly_data",
+      			"Tags" : [ {"Key" : "Name", "Value" : "TestDynamoDB"} ],
+      			"ProvisionedThroughput": {
+                    "ReadCapacityUnits": 5,
+                    "WriteCapacityUnits": 5
+                }
+    		}
+		},
+		
+		"KinesisStreamM3P02" : {
+			"Type" : "AWS::Kinesis::Stream",
+			"Properties" : {
+				"Name" : "m03p02_raw_data_stream",			
+				"ShardCount" : 1,			
+				"Tags" : [{"Key" : "Name", "Value" : "Kinesis_M3P2"}  ]
+			}
+		},		
+		"SNSM3P02" : {
+		  "Type" : "AWS::SNS::Topic",
+		  "Properties" : {
+			"Subscription" : [{
+			  "Endpoint" : "kiranholla@gmail.com",
+			  "Protocol" : "email"
+			}],
+			"TopicName" : "m03p02_anomaly_alerts"
+		  }
+		}
+	}
+		
+		
+   		
+   	
+        
+
+}
